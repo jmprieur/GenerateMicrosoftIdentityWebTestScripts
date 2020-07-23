@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace GenerateMicrosoftIdentityWebTestScripts
 {
@@ -33,6 +34,32 @@ namespace GenerateMicrosoftIdentityWebTestScripts
         };
 
 
+        public static IEnumerable<bool> GetPossibleHosted(TemplateDescription templateDescription, Authentication authentication)
+        {
+            yield return false;
+
+            if (templateDescription.Template == "blazorwasm2" && (authentication == Authentication.SingleOrg || authentication == Authentication.B2C))
+            {
+                yield return true;
+            }
+        }
+
+
+        public static IEnumerable<Calls> GetPossibleCalls(TemplateDescription templateDescription, Authentication authentication, bool hosted)
+        {
+            yield return Calls.NoDownstreamApi;
+
+            if (authentication == Authentication.SingleOrg || authentication == Authentication.B2C && (templateDescription.Template != "blazorwasm2" || hosted))
+            {
+                if (authentication != Authentication.B2C)
+                {
+                    yield return Calls.CallsGraph;
+                }
+                yield return Calls.CallsWebApi;
+            }
+        }
+
+
         public static string GetFlags(Authentication authentication)
         {
             switch (authentication)
@@ -42,7 +69,7 @@ namespace GenerateMicrosoftIdentityWebTestScripts
                 case Authentication.SingleOrg:
                     return "--auth SingleOrg";
                 case Authentication.B2C:
-                    return "--auth IndividualOrgB2C";
+                    return "--auth IndividualB2C";
             }
             return string.Empty;
         }
@@ -52,11 +79,11 @@ namespace GenerateMicrosoftIdentityWebTestScripts
             switch (authentication)
             {
                 case Authentication.NoAuth:
-                    return " no authentication";
+                    return "no authentication";
                 case Authentication.SingleOrg:
-                    return " SingleOrg";
+                    return "SingleOrg";
                 case Authentication.B2C:
-                    return " B2C";
+                    return "B2C";
             }
             return string.Empty;
         }
@@ -75,10 +102,34 @@ namespace GenerateMicrosoftIdentityWebTestScripts
                     }
                     else
                     {
-                        return "--called-api-url \"https://graph.microsoft.com/beta/me\"--called-api-scopes \"user.read\"";
+                        return "--called-api-url \"https://graph.microsoft.com/beta/me\" --called-api-scopes \"user.read\"";
                     }
                 default:
                     return string.Empty;
+            }
+        }
+
+        public static string GetFlags(bool hosted)
+        {
+            if (hosted)
+            {
+                return "--hosted";
+            }
+            else
+            {
+                return string.Empty;
+            }
+        }
+
+        public static string GetText(bool hosted)
+        {
+            if (hosted)
+            {
+                return ", hosted";
+            }
+            else
+            {
+                return string.Empty;
             }
         }
 
@@ -89,9 +140,9 @@ namespace GenerateMicrosoftIdentityWebTestScripts
                 case Calls.NoDownstreamApi:
                     return string.Empty;
                 case Calls.CallsGraph:
-                    return " calling Microsoft Graph";
+                    return "calling Microsoft Graph";
                 case Calls.CallsWebApi:
-                    return " calling a web API";
+                    return "calling a web API";
                 default:
                     return string.Empty;
             }
@@ -99,29 +150,53 @@ namespace GenerateMicrosoftIdentityWebTestScripts
 
         static void Main(string[] args)
         {
-            foreach(TemplateDescription desc in cases)
+            Console.WriteLine("echo \"Test templates\"\n" +
+                              "mkdir tests\n" +
+                              "cd tests\n" +
+                              "dotnet new sln --name tests\n");
+
+            foreach (TemplateDescription desc in cases)
             {
                 Console.WriteLine($"REM {desc.Description}");
                 Console.WriteLine($"mkdir {desc.Template}");
                 Console.WriteLine($"cd {desc.Template}");
                 foreach (Authentication authentication in Enum.GetValues(typeof(Authentication)))
                 {
-                    foreach(Calls calls in Enum.GetValues(typeof(Calls)))
+                    foreach (bool hosted in GetPossibleHosted(desc, authentication))
                     {
-                        if (!(authentication == Authentication.B2C  && calls == Calls.CallsGraph))
+                        foreach (Calls calls in GetPossibleCalls(desc, authentication, hosted))
                         {
-                            Console.WriteLine($"echo {desc.Template}{GetText(authentication)}{GetText(calls)}");
-                            string folder = $"{desc.Template}-{Enum.GetName(typeof(Authentication), authentication)}-{Enum.GetName(typeof(Calls), calls)}";
-                            Console.WriteLine($"mkdir {folder}");
-                            Console.WriteLine($"cd {folder}");
-                            Console.WriteLine($"dotnet new {desc.Template} {GetFlags(authentication)} {GetFlags(calls, authentication)}");
-                            Console.WriteLine("cd ..");
-                            Console.WriteLine();
+                            GenerateSampleCreation(desc, authentication, calls, hosted);
                         }
                     }
                 }
                 Console.WriteLine("cd ..");
             }
+            Console.WriteLine("cd ..");
+            Console.WriteLine("echo \"Build the solution with all the projects created by applying the templates\"");
+            Console.WriteLine("dotnet build");
+        }
+
+        private static void GenerateSampleCreation(TemplateDescription desc, Authentication authentication, Calls calls, bool hosted)
+        {
+            Console.WriteLine($"echo \"Test {desc.Template}, {GetText(authentication)}, {GetText(calls)}{GetText(hosted)}\"".Replace(", ,", ", "));
+            string hostedText = hosted ? "-hosted" : string.Empty;
+            string folder = $"{desc.Template}-{Enum.GetName(typeof(Authentication), authentication)}-{Enum.GetName(typeof(Calls), calls)}{hostedText}".ToLowerInvariant();
+            Console.WriteLine($"mkdir {folder}");
+            Console.WriteLine($"cd {folder}");
+            Console.WriteLine($"dotnet new {desc.Template} {GetFlags(authentication)} {GetFlags(calls, authentication)} {GetFlags(hosted)}");
+            if (hosted)
+            {
+                Console.WriteLine($@"dotnet sln ..\..\tests.sln add Shared\{folder}.Shared.csproj");
+                Console.WriteLine($@"dotnet sln ..\..\tests.sln add Server\{folder}.Server.csproj");
+                Console.WriteLine($@"dotnet sln ..\..\tests.sln add Client\{folder}.Client.csproj");
+            }
+            else
+            {
+                Console.WriteLine($@"dotnet sln ..\..\tests.sln add {folder}.csproj");
+            }
+            Console.WriteLine("cd ..");
+            Console.WriteLine();
         }
     }
 }
