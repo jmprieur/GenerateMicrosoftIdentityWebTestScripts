@@ -29,8 +29,8 @@ namespace GenerateMicrosoftIdentityWebTestScripts
           new TemplateDescription {Template = "webapp2", Description = "Razor web app"},
           new TemplateDescription {Template = "webapi2", Description = "Web api"},
           new TemplateDescription {Template = "mvc2", Description = "MVC Web app"},
-          new TemplateDescription {Template = "blazorserver2", Description = "Blazor app"},
-          new TemplateDescription {Template = "blazorwasm2", Description = "Blazor web assembly"},
+          new TemplateDescription {Template = "blazorserver2", Description = "Blazor server app"},
+          new TemplateDescription {Template = "blazorwasm2", Description = "Blazor web assembly app"},
         };
 
 
@@ -79,9 +79,9 @@ namespace GenerateMicrosoftIdentityWebTestScripts
             switch (authentication)
             {
                 case Authentication.NoAuth:
-                    return "no authentication";
+                    return string.Empty;
                 case Authentication.SingleOrg:
-                    return "SingleOrg";
+                    return "Single-Org";
                 case Authentication.B2C:
                     return "B2C";
             }
@@ -98,7 +98,7 @@ namespace GenerateMicrosoftIdentityWebTestScripts
                 case Calls.CallsWebApi:
                     if (authentication == Authentication.B2C)
                     {
-                        return "--called-api-url \"https://localhost:44332\" --called-api-scopes \"https://fabrikamb2c.onmicrosoft.com/tasks/read\"";
+                        return "--called-api-url \"https://localhost:44332/api/todolist\" --called-api-scopes \"https://fabrikamb2c.onmicrosoft.com/tasks/read\"";
                     }
                     else
                     {
@@ -125,7 +125,7 @@ namespace GenerateMicrosoftIdentityWebTestScripts
         {
             if (hosted)
             {
-                return ", hosted";
+                return ", with hosted blazor server Web API";
             }
             else
             {
@@ -140,9 +140,9 @@ namespace GenerateMicrosoftIdentityWebTestScripts
                 case Calls.NoDownstreamApi:
                     return string.Empty;
                 case Calls.CallsGraph:
-                    return "calling Microsoft Graph";
+                    return ", calling Microsoft Graph";
                 case Calls.CallsWebApi:
-                    return "calling a web API";
+                    return ", calling a downstream web API";
                 default:
                     return string.Empty;
             }
@@ -171,6 +171,7 @@ namespace GenerateMicrosoftIdentityWebTestScripts
                     }
                 }
                 Console.WriteLine("cd ..");
+                Console.WriteLine();
             }
             Console.WriteLine("cd ..");
             Console.WriteLine("echo \"Build the solution with all the projects created by applying the templates\"");
@@ -179,9 +180,8 @@ namespace GenerateMicrosoftIdentityWebTestScripts
 
         private static void GenerateSampleCreation(TemplateDescription desc, Authentication authentication, Calls calls, bool hosted)
         {
-            Console.WriteLine($"echo \"Test {desc.Template}, {GetText(authentication)}, {GetText(calls)}{GetText(hosted)}\"".Replace(", ,", ", "));
-            string hostedText = hosted ? "-hosted" : string.Empty;
-            string folder = $"{desc.Template}-{Enum.GetName(typeof(Authentication), authentication)}-{Enum.GetName(typeof(Calls), calls)}{hostedText}".ToLowerInvariant();
+            Console.WriteLine($"echo \"Test {GetCommentName(desc, authentication, calls, hosted)}\"");
+            string folder = GetFolderName(desc, authentication, calls, hosted);
             Console.WriteLine($"mkdir {folder}");
             Console.WriteLine($"cd {folder}");
             Console.WriteLine($"dotnet new {desc.Template} {GetFlags(authentication)} {GetFlags(calls, authentication)} {GetFlags(hosted)}");
@@ -197,6 +197,54 @@ namespace GenerateMicrosoftIdentityWebTestScripts
             }
             Console.WriteLine("cd ..");
             Console.WriteLine();
+        }
+
+        private static string GetFolderName(TemplateDescription desc, Authentication authentication, Calls calls, bool hosted)
+        {
+            string authenticationText = Enum.GetName(typeof(Authentication), authentication);
+            if (!string.IsNullOrEmpty(authenticationText))
+            {
+                authenticationText = "-" + authenticationText;
+            }
+
+            string callsText;
+            if (calls == Calls.NoDownstreamApi)
+            {
+                callsText = string.Empty;
+            }
+            else
+            {
+                callsText = "-" + Enum.GetName(typeof(Calls), calls);
+            }
+            string hostedText = hosted ? "-hosted" : string.Empty;
+            string folder = $"{desc.Template}{authenticationText}{callsText}{hostedText}".ToLowerInvariant();
+            return folder;
+        }
+
+        private static string GetCommentName(TemplateDescription desc, Authentication authentication, Calls calls, bool hosted)
+        {
+            string authenticationText = GetText(authentication);
+            if (!string.IsNullOrEmpty(authenticationText))
+            {
+                authenticationText = ", " + authenticationText;
+            }
+            else
+            {
+                authenticationText = ", no auth";
+            }
+
+            string callsText;
+            if (calls == Calls.NoDownstreamApi)
+            {
+                callsText = string.Empty;
+            }
+            else
+            {
+                callsText = GetText(calls);
+            }
+            string hostedText = GetText(hosted);
+            string comment = $"{desc.Template}{authenticationText}{hostedText}{callsText}".ToLowerInvariant();
+            return comment;
         }
     }
 }
